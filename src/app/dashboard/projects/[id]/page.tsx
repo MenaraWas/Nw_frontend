@@ -1,0 +1,218 @@
+'use client'
+
+import { useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/hooks/useAuth'
+import api from '@/lib/api'
+import { Task, TaskStatus } from '@/types'
+import Navbar from '@/components/shared/Navbar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Plus, Lock, ChevronRight } from 'lucide-react'
+
+const COLUMNS: { status: TaskStatus; label: string; color: string; border: string }[] = [
+  { status: 'TODO', label: 'To Do', color: 'bg-gray-50', border: 'border-gray-200' },
+  { status: 'IN_PROGRESS', label: 'In Progress', color: 'bg-blue-50', border: 'border-blue-200' },
+  { status: 'DONE', label: 'Done', color: 'bg-green-50', border: 'border-green-200' },
+  { status: 'BLOCKED', label: 'Blocked', color: 'bg-red-50', border: 'border-red-200' },
+]
+
+const BADGE_MAP: Record<TaskStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  TODO: 'secondary',
+  IN_PROGRESS: 'outline',
+  DONE: 'default',
+  BLOCKED: 'destructive',
+}
+
+const NEXT_STATUS: Partial<Record<TaskStatus, TaskStatus>> = {
+  TODO: 'IN_PROGRESS',
+  IN_PROGRESS: 'DONE',
+}
+
+export default function ProjectDetailPage() {
+  const { id: projectId } = useParams<{ id: string }>()
+  const router = useRouter()
+  const { user, isInitialized } = useAuth()
+  const queryClient = useQueryClient()
+  const [errorMsg, setErrorMsg] = useState('')
+
+  const { data: project, isLoading: projectLoading } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: async () => {
+      const res = await api.get(`/api/projects/${projectId}`)
+      return res.data.data
+    },
+    enabled: !!user && !!projectId,
+  })
+
+  const { data: tasks, isLoading: tasksLoading } = useQuery({
+    queryKey: ['tasks', projectId],
+    queryFn: async () => {
+      const res = await api.get(`/api/tasks/project/${projectId}`)
+      return res.data.data as Task[]
+    },
+    enabled: !!user && !!projectId,
+  })
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ taskId, status, version }: { taskId: string; status: TaskStatus; version: number }) => {
+      const res = await api.patch(`/api/tasks/${taskId}/status`, { status, version })
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] })
+      setErrorMsg('')
+    },
+    onError: (err: any) => {
+      setErrorMsg(err.response?.data?.message || 'Gagal mengupdate status')
+      setTimeout(() => setErrorMsg(''), 4000)
+    },
+  })
+
+  const canMove = (task: Task, next: TaskStatus): boolean => {
+    if (!user) return false
+    if (user.role === 'CLIENT') return false
+    if (user.role === 'PM' && next === 'DONE') return false
+    if (task.status === 'BLOCKED') return false
+    return true
+  }
+
+  if (!isInitialized || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-[#0d0d0f] border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f4f5f7]">
+      <Navbar
+        showBack
+        backHref="/dashboard"
+        title={projectLoading ? 'Loading...' : project?.name || 'Project'}
+      />
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            {project?.description && (
+              <p className="text-gray-500 text-sm">{project.description}</p>
+            )}
+          </div>
+          {user.role === 'PM' && (
+            <Button
+              onClick={() => router.push(`/dashboard/projects/${projectId}/tasks/create`)}
+              className="bg-[#0d0d0f] hover:bg-[#0d0d0f]/90 text-white gap-2"
+            >
+              <Plus size={16} />
+              Add Task
+            </Button>
+          )}
+        </div>
+
+        {/* Error */}
+        {errorMsg && (
+          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Kanban Board */}
+        <div className="grid grid-cols-4 gap-4">
+          {COLUMNS.map(({ status, label, color, border }) => {
+            const columnTasks = tasks?.filter((t) => t.status === status) || []
+            return (
+              <div key={status} className="flex flex-col gap-3">
+                {/* Column Header */}
+                <div className={`rounded-xl border ${color} ${border} px-3 py-2.5 flex justify-between items-center`}>
+                  <span className="text-sm font-semibold text-gray-700">{label}</span>
+                  <span className="text-xs text-gray-400 bg-white rounded-full px-2 py-0.5 border">
+                    {tasksLoading ? '...' : columnTasks.length}
+                  </span>
+                </div>
+
+                {/* Tasks */}
+                <div className="flex flex-col gap-2 min-h-24">
+                  {tasksLoading && (
+                    <div className="bg-white rounded-xl p-4 animate-pulse">
+                      <div className="h-3 bg-gray-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    </div>
+                  )}
+
+                  {columnTasks.map((task) => {
+                    const next = NEXT_STATUS[task.status]
+                    const movable = next && canMove(task, next)
+                    const allDepsDone = task.dependencies?.every(
+                      (d) => d.prerequisite.status === 'DONE'
+                    ) ?? true
+
+                    return (
+                      <div
+                        key={task.id}
+                        className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+                      >
+                        {/* Task header */}
+                        <div className="flex justify-between items-start gap-2 mb-2">
+                          <p className="text-sm font-medium text-[#0d0d0f] leading-snug">
+                            {task.title}
+                          </p>
+                          {task.status === 'BLOCKED' && (
+                            <Lock size={12} className="text-red-400 shrink-0 mt-0.5" />
+                          )}
+                        </div>
+
+                        {/* Assignee */}
+                        {task.assignee && (
+                          <p className="text-xs text-gray-400 mb-2">
+                            {task.assignee.name}
+                            {task.assignee.department && ` · ${task.assignee.department}`}
+                          </p>
+                        )}
+
+                        {/* Dependencies */}
+                        {task.dependencies && task.dependencies.length > 0 && (
+                          <div className="mb-2.5 space-y-1">
+                            {task.dependencies.map((dep) => (
+                              <div key={dep.id} className="flex items-center gap-1.5 text-xs">
+                                <span className={dep.prerequisite.status === 'DONE' ? 'text-green-500' : 'text-red-400'}>
+                                  {dep.prerequisite.status === 'DONE' ? '✓' : '✗'}
+                                </span>
+                                <span className="text-gray-400 truncate">{dep.prerequisite.title}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Move button */}
+                        {movable && (
+                          <button
+                            onClick={() => updateStatus.mutate({ taskId: task.id, status: next!, version: task.version })}
+                            disabled={updateStatus.isPending || !allDepsDone}
+                            className="w-full flex items-center justify-center gap-1 text-xs text-gray-500 hover:text-[#0d0d0f] border border-gray-200 hover:border-gray-400 rounded-lg py-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Move to {next?.replace('_', ' ')}
+                            <ChevronRight size={12} />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {!tasksLoading && columnTasks.length === 0 && (
+                    <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-300">No tasks</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
