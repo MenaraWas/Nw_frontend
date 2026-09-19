@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { Task, TaskStatus } from '@/types'
 import Navbar from '@/components/shared/Navbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, Lock, ChevronRight } from 'lucide-react'
+import { Plus, Lock, ChevronRight, Users } from 'lucide-react'
 
 const COLUMNS: { status: TaskStatus; label: string; color: string; border: string }[] = [
   { status: 'TODO', label: 'To Do', color: 'bg-gray-50', border: 'border-gray-200' },
@@ -64,8 +65,11 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['tasks', projectId] })
       setErrorMsg('')
     },
-    onError: (err: any) => {
-      setErrorMsg(err.response?.data?.message || 'Gagal mengupdate status')
+    onError: (err: unknown) => {
+      const message = isAxiosError<{ message?: string }>(err)
+        ? err.response?.data?.message
+        : undefined
+      setErrorMsg(message || 'Gagal mengupdate status')
       setTimeout(() => setErrorMsg(''), 4000)
     },
   })
@@ -75,6 +79,7 @@ export default function ProjectDetailPage() {
     if (user.role === 'CLIENT') return false
     if (user.role === 'PM' && next === 'DONE') return false
     if (task.status === 'BLOCKED') return false
+    if (next === 'DONE' && task.assigneeId !== user.id) return false
     return true
   }
 
@@ -94,22 +99,35 @@ export default function ProjectDetailPage() {
         title={projectLoading ? 'Loading...' : project?.name || 'Project'}
       />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            {project?.description && (
-              <p className="text-gray-500 text-sm">{project.description}</p>
-            )}
+        <div className="mb-6 flex flex-col gap-5 border-b border-gray-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">
+              Project board
+            </p>
+            <p className="max-w-2xl text-sm leading-6 text-gray-500">
+              {project?.description || 'Track progress and keep the team moving.'}
+            </p>
           </div>
           {user.role === 'PM' && (
-            <Button
-              onClick={() => router.push(`/dashboard/projects/${projectId}/tasks/create`)}
-              className="bg-[#0d0d0f] hover:bg-[#0d0d0f]/90 text-white gap-2"
-            >
-              <Plus size={16} />
-              Add Task
-            </Button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/dashboard/projects/${projectId}/members`)}
+                className="w-full gap-2 sm:w-auto"
+              >
+                <Users size={16} />
+                Manage Members
+              </Button>
+              <Button
+                onClick={() => router.push(`/dashboard/projects/${projectId}/tasks/create`)}
+                className="w-full gap-2 bg-[#0d0d0f] text-white hover:bg-[#0d0d0f]/90 sm:w-auto"
+              >
+                <Plus size={16} />
+                Add Task
+              </Button>
+            </div>
           )}
         </div>
 
@@ -121,15 +139,15 @@ export default function ProjectDetailPage() {
         )}
 
         {/* Kanban Board */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map(({ status, label, color, border }) => {
             const columnTasks = tasks?.filter((t) => t.status === status) || []
             return (
               <div key={status} className="flex flex-col gap-3">
                 {/* Column Header */}
-                <div className={`rounded-xl border ${color} ${border} px-3 py-2.5 flex justify-between items-center`}>
+                <div className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${color} ${border}`}>
                   <span className="text-sm font-semibold text-gray-700">{label}</span>
-                  <span className="text-xs text-gray-400 bg-white rounded-full px-2 py-0.5 border">
+                  <span className="rounded-full border bg-white px-2 py-0.5 text-xs text-gray-400">
                     {tasksLoading ? '...' : columnTasks.length}
                   </span>
                 </div>
@@ -153,17 +171,19 @@ export default function ProjectDetailPage() {
                     return (
                       <div
                         key={task.id}
-                        className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+                        className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md"
                       >
                         {/* Task header */}
                         <div className="flex justify-between items-start gap-2 mb-2">
-                          <p className="text-sm font-medium text-[#0d0d0f] leading-snug">
-                            {task.title}
-                          </p>
+                          <p className="min-w-0 text-sm font-medium leading-snug text-[#0d0d0f]">{task.title}</p>
                           {task.status === 'BLOCKED' && (
                             <Lock size={12} className="text-red-400 shrink-0 mt-0.5" />
                           )}
                         </div>
+
+                        <Badge variant={BADGE_MAP[task.status]} className="mb-2">
+                          {label}
+                        </Badge>
 
                         {/* Assignee */}
                         {task.assignee && (
@@ -212,7 +232,7 @@ export default function ProjectDetailPage() {
             )
           })}
         </div>
-      </div>
+      </main>
     </div>
   )
 }
