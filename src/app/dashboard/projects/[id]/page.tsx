@@ -11,6 +11,7 @@ import Navbar from '@/components/shared/Navbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus, Lock, ChevronRight, Users } from 'lucide-react'
+import TaskModal from '@/components/shared/TaskModal'
 
 const COLUMNS: { status: TaskStatus; label: string; color: string; border: string }[] = [
   { status: 'TODO', label: 'To Do', color: 'bg-gray-50', border: 'border-gray-200' },
@@ -37,6 +38,7 @@ export default function ProjectDetailPage() {
   const { user, isInitialized } = useAuth()
   const queryClient = useQueryClient()
   const [errorMsg, setErrorMsg] = useState('')
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ['project', projectId],
@@ -171,8 +173,9 @@ export default function ProjectDetailPage() {
                     return (
                       <div
                         key={task.id}
-                        className="rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md"
-                      >
+                        className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => setSelectedTask(task)}
+                        >
                         {/* Task header */}
                         <div className="flex justify-between items-start gap-2 mb-2">
                           <p className="min-w-0 text-sm font-medium leading-snug text-[#0d0d0f]">{task.title}</p>
@@ -217,6 +220,14 @@ export default function ProjectDetailPage() {
                             Move to {next?.replace('_', ' ')}
                             <ChevronRight size={12} />
                           </button>
+                        )}
+
+                        {selectedTask && (
+                        <TaskModal
+                            task={selectedTask}
+                            projectId={projectId}
+                            onClose={() => setSelectedTask(null)}
+                        />
                         )}
                       </div>
                     )
