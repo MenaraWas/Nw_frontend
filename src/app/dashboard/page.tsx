@@ -48,7 +48,7 @@ export default function DashboardPage() {
           </div>
           {user.role === 'PM' && (
             <Button
-              onClick={() => router.push('/dashboard/projects/new')}
+              onClick={() => router.push('/dashboard/projects/create')}
               className="bg-[#0d0d0f] hover:bg-[#0d0d0f]/90 text-white gap-2"
             >
               <Plus size={16} />
