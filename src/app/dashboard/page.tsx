@@ -9,19 +9,32 @@ import Navbar from '@/components/shared/Navbar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FolderOpen, Plus, Users, CheckSquare } from 'lucide-react'
+import { useState } from 'react'
 
 export default function DashboardPage() {
   const router = useRouter()
   const { user, isInitialized } = useAuth()
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['projects'],
-    queryFn: async () => {
-      const res = await api.get('/api/projects')
-      return res.data.data
-    },
-    enabled: !!user,
-  })
+  const [page, setPage] = useState(1)
+const [search, setSearch] = useState('')
+
+const { data: response, isLoading, error } = useQuery({
+  queryKey: ['projects', page, search],
+  queryFn: async () => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      rows: '9',
+      ...(search && { searchFilters: JSON.stringify({ name: search }) }),
+    })
+    const res = await api.get(`/api/projects?${params}`)
+    return res.data
+  },
+  enabled: !!user,
+})
+
+const data = response?.data
+const total = response?.total || 0
+const totalPages = Math.ceil(total / 9)
 
   if (!isInitialized || !user) {
     return (
@@ -56,6 +69,19 @@ export default function DashboardPage() {
             </Button>
           )}
         </div>
+
+        {/* Search */}
+        {user.role !== 'CLIENT' && (
+        <div className="mb-6">
+            <input
+            type="text"
+            placeholder="Search projects..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            className="w-full max-w-sm px-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0d0d0f]"
+            />
+        </div>
+          )}
 
         {/* Loading */}
         {isLoading && (
@@ -174,6 +200,31 @@ export default function DashboardPage() {
               )
             })}
           </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-2 mt-8">
+            <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            >
+            Previous
+            </Button>
+            <span className="text-sm text-gray-500">
+            Page {page} of {totalPages}
+            </span>
+            <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            >
+            Next
+            </Button>
+        </div>
         )}
       </div>
     </div>
