@@ -96,6 +96,7 @@ export default function LoginPage() {
             <p>Frontend: frontend@nodewave.com</p>
             <p>Backend: backend@nodewave.com</p>
             <p>Client: client@nodewave.com</p>
+            <p className="text-white/20 mt-1">Password PM: admin123</p>
             <p className="text-white/20 mt-1">Password: password123</p>
           </div>
         </div>
